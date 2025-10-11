@@ -1,9 +1,11 @@
-# backend/main.py
 from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
+import requests
+import os
+
 from .database import engine, Base
 from .auth import routes as auth_routes
 from . import models
-from fastapi.middleware.cors import CORSMiddleware
 
 Base.metadata.create_all(bind=engine)
 
@@ -17,3 +19,4 @@ app.add_middleware(
 )
 
 app.include_router(auth_routes.router)
+
