@@ -1,34 +1,20 @@
-<<<<<<< HEAD
-# app/routers/auth.py
-
 import os
-import requests
 from urllib.parse import urlencode
-from datetime import datetime
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    status,
-    Header,
-)
+import requests
 from fastapi.responses import RedirectResponse
-from sqlalchemy.orm import Session
-from jose import jwt, JWTError
-from ..database import SessionLocal
-from .. import models, schemas
-from ..email_sender import send_email
-=======
-# backend/auth/routes.py
 
+# Google OAuth environment variables
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8501")
 from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy.orm import Session
 from datetime import datetime
 from jose import jwt, JWTError
-
 from ..database import SessionLocal
 from .. import models, schemas
->>>>>>> dcae7974aef3f18b17b1f41d5be576744a5e8eb2
+from ..email_sender import send_email
 from .utils import (
     hash_password,
     verify_password,
@@ -38,31 +24,11 @@ from .utils import (
     SECRET_KEY,
     ALGORITHM,
 )
-<<<<<<< HEAD
-
-router = APIRouter(prefix="/auth", tags=["auth"])
-
-# =========================================================
-# ================ ENVIRONMENT CONFIG =====================
-# =========================================================
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8501")
-
-
-# =========================================================
-# ================= DATABASE SESSION ======================
-# =========================================================
-=======
-from ..email_sender import send_email
-
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # ---------------------------
 #   Dependency: Get DB Session
 # ---------------------------
->>>>>>> dcae7974aef3f18b17b1f41d5be576744a5e8eb2
 def get_db():
     db = SessionLocal()
     try:
@@ -70,40 +36,21 @@ def get_db():
     finally:
         db.close()
 
-
-<<<<<<< HEAD
-# =========================================================
-# ============= STANDARD EMAIL + OTP AUTH FLOW ============
-# =========================================================
-
-@router.post("/register", response_model=dict)
-def register_parent(payload: schemas.ParentRegister, db: Session = Depends(get_db)):
-=======
 # ---------------------------
 #   Parent Registration
 # ---------------------------
 @router.post("/register", response_model=dict)
 def register_parent(payload: schemas.ParentRegister, db: Session = Depends(get_db)):
-    # Validate passwords
->>>>>>> dcae7974aef3f18b17b1f41d5be576744a5e8eb2
     if payload.password != payload.confirm_password:
         raise HTTPException(status_code=400, detail="Passwords do not match")
 
     if len(payload.password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters long")
 
-<<<<<<< HEAD
-=======
-    # Check if email already exists
->>>>>>> dcae7974aef3f18b17b1f41d5be576744a5e8eb2
     existing = db.query(models.Parent).filter(models.Parent.email == payload.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-<<<<<<< HEAD
-=======
-    # Create new parent
->>>>>>> dcae7974aef3f18b17b1f41d5be576744a5e8eb2
     parent = models.Parent(
         full_name=payload.full_name,
         email=payload.email,
@@ -114,10 +61,6 @@ def register_parent(payload: schemas.ParentRegister, db: Session = Depends(get_d
     db.commit()
     db.refresh(parent)
 
-<<<<<<< HEAD
-=======
-    # Send welcome email (optional)
->>>>>>> dcae7974aef3f18b17b1f41d5be576744a5e8eb2
     try:
         send_email(
             parent.email,
@@ -125,41 +68,24 @@ def register_parent(payload: schemas.ParentRegister, db: Session = Depends(get_d
             f"Hi {parent.full_name}, welcome to STEM Kids! You can now log in and verify via OTP."
         )
     except Exception:
-<<<<<<< HEAD
-=======
-        # Don’t fail registration if email sending fails
->>>>>>> dcae7974aef3f18b17b1f41d5be576744a5e8eb2
         pass
 
     return {"msg": "Registered successfully. Please log in and verify the OTP sent to your email."}
 
-
-<<<<<<< HEAD
-=======
 # ---------------------------
 #   Parent Login (Generates OTP)
 # ---------------------------
->>>>>>> dcae7974aef3f18b17b1f41d5be576744a5e8eb2
 @router.post("/login", response_model=dict)
 def login(payload: schemas.ParentLogin, db: Session = Depends(get_db)):
     parent = db.query(models.Parent).filter(models.Parent.email == payload.email).first()
     if not parent or not verify_password(payload.password, parent.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-<<<<<<< HEAD
-=======
-    # Generate OTP, save and send via email
->>>>>>> dcae7974aef3f18b17b1f41d5be576744a5e8eb2
     otp = generate_otp()
     parent.otp_secret = otp
     parent.otp_expires_at = otp_expiry()
     db.add(parent)
     db.commit()
-
-<<<<<<< HEAD
-=======
-    # Send OTP email
->>>>>>> dcae7974aef3f18b17b1f41d5be576744a5e8eb2
     try:
         send_email(
             parent.email,
@@ -171,13 +97,9 @@ def login(payload: schemas.ParentLogin, db: Session = Depends(get_db)):
 
     return {"msg": "OTP sent to your email. Verify it using /auth/verify-otp endpoint."}
 
-
-<<<<<<< HEAD
-=======
 # ---------------------------
 #   Verify OTP (Generate JWT)
 # ---------------------------
->>>>>>> dcae7974aef3f18b17b1f41d5be576744a5e8eb2
 @router.post("/verify-otp", response_model=schemas.Token)
 def verify_otp(email: str, otp: str, db: Session = Depends(get_db)):
     parent = db.query(models.Parent).filter(models.Parent.email == email).first()
@@ -190,10 +112,6 @@ def verify_otp(email: str, otp: str, db: Session = Depends(get_db)):
     if parent.otp_expires_at < datetime.utcnow():
         raise HTTPException(status_code=400, detail="OTP expired")
 
-<<<<<<< HEAD
-=======
-    # Clear OTP after successful verification
->>>>>>> dcae7974aef3f18b17b1f41d5be576744a5e8eb2
     parent.otp_secret = None
     parent.otp_expires_at = None
     db.add(parent)
@@ -202,13 +120,9 @@ def verify_otp(email: str, otp: str, db: Session = Depends(get_db)):
     token = create_access_token({"sub": str(parent.id), "role": "parent", "email": parent.email})
     return {"access_token": token, "token_type": "bearer"}
 
-
-<<<<<<< HEAD
-=======
 # ---------------------------
 #   Helper: Get Current Parent
 # ---------------------------
->>>>>>> dcae7974aef3f18b17b1f41d5be576744a5e8eb2
 def get_current_parent(authorization: str = Header(None), db: Session = Depends(get_db)):
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
@@ -229,13 +143,9 @@ def get_current_parent(authorization: str = Header(None), db: Session = Depends(
 
     return parent
 
-
-<<<<<<< HEAD
-=======
 # ---------------------------
 #   Parent Creates Child Profile
 # ---------------------------
->>>>>>> dcae7974aef3f18b17b1f41d5be576744a5e8eb2
 @router.post("/profiles", response_model=schemas.ChildOut)
 def create_profile(
     payload: schemas.ChildCreate,
@@ -248,20 +158,15 @@ def create_profile(
     db.refresh(child)
     return child
 
-
-<<<<<<< HEAD
-=======
 # ---------------------------
 #   List All Child Profiles
 # ---------------------------
->>>>>>> dcae7974aef3f18b17b1f41d5be576744a5e8eb2
 @router.get("/profiles", response_model=list[schemas.ChildOut])
 def list_profiles(
     parent: models.Parent = Depends(get_current_parent),
     db: Session = Depends(get_db),
 ):
     return parent.children
-<<<<<<< HEAD
 
 
 # =========================================================
@@ -327,33 +232,27 @@ def google_callback(code: str | None = None):
         "https://www.googleapis.com/oauth2/v3/userinfo",
         headers={"Authorization": f"Bearer {access_token}"}
     )
-    if userinfo_resp.status_code != 200:
-        raise HTTPException(status_code=400, detail="Failed to fetch user info from Google")
 
     profile = userinfo_resp.json()
     email = profile.get("email")
     full_name = profile.get("name") or profile.get("given_name") or "Google User"
 
     db: Session = SessionLocal()
-    try:
-        parent = db.query(models.Parent).filter(models.Parent.email == email).first()
-        if not parent:
-            parent = models.Parent(
-                full_name=full_name,
-                email=email,
-                phone=None,
-                hashed_password=hash_password(os.urandom(12).hex()),
-            )
-            db.add(parent)
-            db.commit()
-            db.refresh(parent)
-    finally:
-        db.close()
+    parent = db.query(models.Parent).filter(models.Parent.email == email).first()
+    if not parent:
+        parent = models.Parent(
+            full_name=full_name,
+            email=email,
+            phone=None,
+            hashed_password=hash_password(os.urandom(12).hex()),
+        )
+        db.add(parent)
+        db.commit()
+        db.refresh(parent)
+    db.close()
 
     token_data = {"sub": str(parent.id), "role": "parent", "email": parent.email}
     jwt_token = create_access_token(token_data)
 
     redirect_url = f"{FRONTEND_URL}?oauth_token={jwt_token}"
     return RedirectResponse(redirect_url)
-=======
->>>>>>> dcae7974aef3f18b17b1f41d5be576744a5e8eb2
