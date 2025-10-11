@@ -1,4 +1,5 @@
 # backend/main.py
+<<<<<<< HEAD
 import dotenv; dotenv.load_dotenv()
 
 from fastapi import FastAPI, Request, Depends
@@ -27,10 +28,26 @@ app = FastAPI(title="Adaptive Learning Auth")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # ⚠️ Restrict in production (use your frontend domain)
+=======
+from fastapi import FastAPI, Depends
+from .database import engine, Base
+from .auth import routes as auth_routes
+from . import models
+from fastapi.middleware.cors import CORSMiddleware
+
+Base.metadata.create_all(bind=engine)
+
+app = FastAPI(title="Adaptive Learning Auth")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # restrict in production
+>>>>>>> dcae7974aef3f18b17b1f41d5be576744a5e8eb2
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+<<<<<<< HEAD
 # ==========================
 #   Include Auth Routes
 # ==========================
@@ -96,3 +113,6 @@ def debug_env():
         "GOOGLE_CLIENT_SECRET": os.getenv("GOOGLE_CLIENT_SECRET"),
         "GOOGLE_REDIRECT_URI": os.getenv("GOOGLE_REDIRECT_URI")
     }
+=======
+app.include_router(auth_routes.router)
+>>>>>>> dcae7974aef3f18b17b1f41d5be576744a5e8eb2
