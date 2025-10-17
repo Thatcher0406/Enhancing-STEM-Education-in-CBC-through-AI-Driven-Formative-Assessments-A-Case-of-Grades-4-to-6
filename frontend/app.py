@@ -3,6 +3,7 @@
 import streamlit as st
 import requests
 import os
+import time
 from urllib.parse import urlencode
 
 # ==========================
@@ -11,12 +12,12 @@ from urllib.parse import urlencode
 BACKEND = os.getenv("BACKEND_URL", "http://localhost:8000")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8501")
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-GOOGLE_REDIRECT_URI = "http://localhost:8000/auth/google/callback"
+GOOGLE_REDIRECT_URI = f"{BACKEND}/auth/google/callback"
 
 # ==========================
 #   Streamlit Setup
 # ==========================
-st.set_page_config(page_title="STEM Kids Learning Auth", layout="centered", page_icon="🧠")
+st.set_page_config(page_title="Adaptive Learning Auth", layout="centered", page_icon="🧠")
 
 # ==========================
 #   Custom CSS
@@ -70,18 +71,6 @@ def local_css():
         input, textarea {
             border-radius: 8px !important;
             border: 2px solid #c7d2fe !important;
-        }
-
-        .google-btn {
-            background-color:#4285F4;
-            color:white;
-            border:none;
-            padding:10px 20px;
-            border-radius:5px;
-            font-size:16px;
-            text-decoration:none;
-            font-weight:600;
-            display:inline-block;
         }
 
         .success-box {
@@ -167,7 +156,9 @@ def login_flow():
             if resp.status_code == 200:
                 token = resp.json()["access_token"]
                 st.session_state["token"] = token
-                st.success("🎉 Logged in successfully!")
+                st.success("🎉 Logged in successfully! Redirecting...")
+                time.sleep(1.2)
+                st.switch_page("pages/profile_select.py")
             else:
                 try:
                     st.error(resp.json().get("detail", "Invalid OTP"))
@@ -190,18 +181,20 @@ def google_login_button():
     google_auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
     st.markdown(
         f"""
-        <a href="{google_auth_url}" target="_self">
-            <button style="
-                background-color:#4285F4;
-                color:white;
-                border:none;
-                padding:10px 20px;
-                font-size:16px;
-                border-radius:5px;
-                cursor:pointer;">
-                🌐 Continue with Google
-            </button>
-        </a>
+        <div style="text-align:center; margin-top:20px;">
+            <a href="{google_auth_url}" target="_self">
+                <button style="
+                    background-color:#4285F4;
+                    color:white;
+                    border:none;
+                    padding:10px 20px;
+                    font-size:16px;
+                    border-radius:5px;
+                    cursor:pointer;">
+                    🌐 Continue with Google
+                </button>
+            </a>
+        </div>
         """,
         unsafe_allow_html=True
     )
@@ -223,36 +216,63 @@ def profiles_area():
     name = st.text_input("Child name")
     grade = st.text_input("Grade")
 
+    # Add Profile
     if st.button("Add Profile"):
-        resp = requests.post(f"{BACKEND}/auth/profiles", json={"name": name, "grade": grade}, headers=headers)
-        if resp.status_code in [200, 201]:
-            st.success("✅ Profile added successfully!")
-        else:
-            st.error(resp.json().get("detail", "Error adding profile"))
+        try:
+            resp = requests.post(
+                f"{BACKEND}/auth/profiles",
+                json={"name": name, "grade": grade},
+                headers=headers,
+                timeout=10
+            )
+            if resp.status_code in [200, 201]:
+                st.success("✅ Profile added successfully!")
+            else:
+                try:
+                    error = resp.json().get("detail", "Error adding profile")
+                except ValueError:
+                    error = f"Server returned non-JSON response ({resp.status_code})"
+                st.error(f"⚠️ {error}")
+        except Exception as e:
+            st.error(f"🚨 Connection error: {e}")
 
-    resp = requests.get(f"{BACKEND}/auth/profiles", headers=headers)
-    if resp.status_code == 200:
-        profiles = resp.json()
-        st.subheader("📋 Choose a profile")
-        cols = st.columns(3)
-        for i, p in enumerate(profiles):
-            with cols[i % 3]:
-                if st.button(f"Use {p['name']}", key=f"use_{p['id']}"):
-                    st.session_state["active_profile"] = p
-                    st.markdown(
-                        f"<div class='success-box'>Active profile: <b>{p['name']}</b></div>",
-                        unsafe_allow_html=True
-                    )
+    # Fetch Profiles
+    try:
+        resp = requests.get(f"{BACKEND}/auth/profiles", headers=headers, timeout=10)
+        if resp.status_code == 200:
+            profiles = resp.json()
+            if not profiles:
+                st.info("No profiles yet. Add one above.")
+            else:
+                st.subheader("📋 Choose a profile")
+                cols = st.columns(3)
+                for i, p in enumerate(profiles):
+                    with cols[i % 3]:
+                        if st.button(f"Use {p['name']}", key=f"use_{p['id']}"):
+                            st.session_state["active_profile"] = p
+                            st.markdown(
+                                f"<div class='success-box'>Active profile: <b>{p['name']}</b></div>",
+                                unsafe_allow_html=True
+                            )
+        else:
+            try:
+                error = resp.json().get("detail", "Failed to load profiles.")
+            except ValueError:
+                error = f"Server returned non-JSON response ({resp.status_code})"
+            st.error(f"⚠️ {error}")
+    except Exception as e:
+        st.error(f"🚨 Connection error while fetching profiles: {e}")
+
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ==========================
 #   Main UI
 # ==========================
 def main():
-    st.markdown("<h1>🌈 STEM Kids Learning Auth Portal</h1>", unsafe_allow_html=True)
+    st.markdown("<h1>🌈 STEM Kids Adaptive Learning Portal</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align:center; color:gray;'>Empowering Learning through Technology</p>", unsafe_allow_html=True)
 
-    google_login_button()  # Show Google button on top
+    google_login_button()
 
     page = st.sidebar.radio("Navigate", ["Register", "Login", "Profiles"], index=0)
     if page == "Register":
