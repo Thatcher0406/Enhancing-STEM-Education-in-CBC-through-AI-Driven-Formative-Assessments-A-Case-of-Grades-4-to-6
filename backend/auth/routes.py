@@ -1,60 +1,72 @@
-# app/routers/auth.py
-
 import os
 import requests
 from urllib.parse import urlencode
 from datetime import datetime
+from typing import Optional, List
+
 from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
-    status,
     Header,
+    status,
 )
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
 from jose import jwt, JWTError
-from ..database import SessionLocal
+
+from ..database import SessionLocal, get_db
 from .. import models, schemas
 from ..email_sender import send_email
-from .utils import (
-    hash_password,
-    verify_password,
-    create_access_token,
-    generate_otp,
-    otp_expiry,
-    SECRET_KEY,
-    ALGORITHM,
-)
+from ..auth import utils  # Ensure SECRET_KEY, ALGORITHM, and helper functions are here
 
+# ============================================================
+# ROUTER CONFIG
+# ============================================================
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# =========================================================
-# ================ ENVIRONMENT CONFIG =====================
-# =========================================================
+# ============================================================
+# ENVIRONMENT CONFIG
+# ============================================================
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8501")
 
+# ============================================================
+# AUTH HELPER — Extract Parent from Token
+# ============================================================
+def get_current_parent(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db)
+) -> models.Parent:
+    """Extract parent info from JWT in Authorization header."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
 
-# =========================================================
-# ================= DATABASE SESSION ======================
-# =========================================================
-def get_db():
-    db = SessionLocal()
     try:
-        yield db
-    finally:
-        db.close()
+        scheme, token = authorization.split()
+        if scheme.lower() != "bearer":
+            raise HTTPException(status_code=401, detail="Invalid authorization scheme")
+        payload = jwt.decode(token, utils.SECRET_KEY, algorithms=[utils.ALGORITHM])
+        parent_id = int(payload.get("sub"))
+        if not parent_id:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
+    except (JWTError, ValueError):
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    parent = db.query(models.Parent).get(parent_id)
+    if not parent:
+        raise HTTPException(status_code=404, detail="Parent not found")
+    return parent
 
 
-# =========================================================
-# ============= STANDARD EMAIL + OTP AUTH FLOW ============
-# =========================================================
-
+# ============================================================
+# STANDARD EMAIL + OTP AUTH FLOW
+# ============================================================
 @router.post("/register", response_model=dict)
 def register_parent(payload: schemas.ParentRegister, db: Session = Depends(get_db)):
+    """Register new parent and send welcome email."""
     if payload.password != payload.confirm_password:
         raise HTTPException(status_code=400, detail="Passwords do not match")
 
@@ -69,7 +81,7 @@ def register_parent(payload: schemas.ParentRegister, db: Session = Depends(get_d
         full_name=payload.full_name,
         email=payload.email,
         phone=payload.phone,
-        hashed_password=hash_password(payload.password),
+        hashed_password=utils.hash_password(payload.password),
     )
     db.add(parent)
     db.commit()
@@ -89,22 +101,19 @@ def register_parent(payload: schemas.ParentRegister, db: Session = Depends(get_d
 
 @router.post("/login", response_model=dict)
 def login(payload: schemas.ParentLogin, db: Session = Depends(get_db)):
+    """Send OTP to parent after verifying password."""
     parent = db.query(models.Parent).filter(models.Parent.email == payload.email).first()
-    if not parent or not verify_password(payload.password, parent.hashed_password):
+    if not parent or not utils.verify_password(payload.password, parent.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    otp = generate_otp()
+    otp = utils.generate_otp()
     parent.otp_secret = otp
-    parent.otp_expires_at = otp_expiry()
+    parent.otp_expires_at = utils.otp_expiry()
     db.add(parent)
     db.commit()
 
     try:
-        send_email(
-            parent.email,
-            "Your Login OTP",
-            f"Your OTP is: {otp}. It expires in 10 minutes."
-        )
+        send_email(parent.email, "Your Login OTP", f"Your OTP is: {otp}. It expires in 10 minutes.")
     except Exception:
         pass
 
@@ -113,6 +122,7 @@ def login(payload: schemas.ParentLogin, db: Session = Depends(get_db)):
 
 @router.post("/verify-otp", response_model=schemas.Token)
 def verify_otp(email: str, otp: str, db: Session = Depends(get_db)):
+    """Verify OTP and return JWT token."""
     parent = db.query(models.Parent).filter(models.Parent.email == email).first()
     if not parent:
         raise HTTPException(status_code=404, detail="Parent not found")
@@ -128,56 +138,39 @@ def verify_otp(email: str, otp: str, db: Session = Depends(get_db)):
     db.add(parent)
     db.commit()
 
-    token = create_access_token({"sub": str(parent.id), "role": "parent", "email": parent.email})
+    token = utils.create_access_token({"sub": str(parent.id), "role": "parent", "email": parent.email})
     return {"access_token": token, "token_type": "bearer"}
 
 
-def get_current_parent(authorization: str = Header(None), db: Session = Depends(get_db)):
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing authorization header")
-
-    try:
-        scheme, token = authorization.split()
-        if scheme.lower() != "bearer":
-            raise HTTPException(status_code=401, detail="Invalid authorization scheme")
-
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        parent_id = int(payload.get("sub"))
-    except (JWTError, ValueError, Exception):
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-
-    parent = db.query(models.Parent).get(parent_id)
-    if not parent:
-        raise HTTPException(status_code=404, detail="Parent not found")
-
-    return parent
-
-
-@router.post("/profiles", response_model=schemas.ChildOut)
-def create_profile(
+# ============================================================
+# CHILD PROFILE MANAGEMENT
+# ============================================================
+@router.post("/profiles", response_model=schemas.ChildOut, status_code=status.HTTP_201_CREATED)
+def create_child_profile(
     payload: schemas.ChildCreate,
     parent: models.Parent = Depends(get_current_parent),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
-    child = models.Child(parent_id=parent.id, name=payload.name, grade=payload.grade)
+    """Create a new child profile for the logged-in parent."""
+    child = models.ChildProfile(parent_id=parent.id, name=payload.name, grade=payload.grade)
     db.add(child)
     db.commit()
     db.refresh(child)
     return child
 
 
-@router.get("/profiles", response_model=list[schemas.ChildOut])
-def list_profiles(
+@router.get("/profiles", response_model=List[schemas.ChildOut])
+def get_child_profiles(
     parent: models.Parent = Depends(get_current_parent),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
-    return parent.children
+    """Get all child profiles for the logged-in parent."""
+    return parent.children or []
 
 
-# =========================================================
-# =============== GOOGLE OAUTH2 AUTH FLOW =================
-# =========================================================
-
+# ============================================================
+# GOOGLE OAUTH2 AUTH FLOW
+# ============================================================
 @router.get("/google/login")
 def google_login():
     """Return Google login URL."""
@@ -190,7 +183,7 @@ def google_login():
         "scope": "openid email profile",
         "redirect_uri": GOOGLE_REDIRECT_URI,
         "access_type": "offline",
-        "prompt": "select_account consent"
+        "prompt": "select_account consent",
     }
     return {"auth_url": "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)}
 
@@ -207,7 +200,7 @@ def google_redirect():
         "scope": "openid email profile",
         "redirect_uri": GOOGLE_REDIRECT_URI,
         "access_type": "offline",
-        "prompt": "select_account consent"
+        "prompt": "select_account consent",
     }
     return RedirectResponse("https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params))
 
@@ -252,7 +245,7 @@ def google_callback(code: str | None = None):
                 full_name=full_name,
                 email=email,
                 phone=None,
-                hashed_password=hash_password(os.urandom(12).hex()),
+                hashed_password=utils.hash_password(os.urandom(12).hex()),
             )
             db.add(parent)
             db.commit()
@@ -261,7 +254,7 @@ def google_callback(code: str | None = None):
         db.close()
 
     token_data = {"sub": str(parent.id), "role": "parent", "email": parent.email}
-    jwt_token = create_access_token(token_data)
+    jwt_token = utils.create_access_token(token_data)
 
     redirect_url = f"{FRONTEND_URL}?oauth_token={jwt_token}"
     return RedirectResponse(redirect_url)
