@@ -5,14 +5,16 @@ import requests
 import os
 import time
 from urllib.parse import urlencode
+from dotenv import load_dotenv
 
 # ==========================
 #   Configuration
 # ==========================
+load_dotenv()
 BACKEND = os.getenv("BACKEND_URL", "http://localhost:8000")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8501")
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-GOOGLE_REDIRECT_URI = f"{BACKEND}/auth/google/callback"
+GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", f"{BACKEND}/auth/google/callback")
 
 # ==========================
 #   Streamlit Setup
@@ -117,6 +119,10 @@ def register_parent():
         })
         if resp.status_code == 200:
             st.success("✅ Registered successfully! Please verify OTP sent to your email.")
+            # Automatically switch to Login page after 2 seconds
+            time.sleep(2)
+            st.session_state["auto_switch_to_login"] = True
+            st.rerun()
         else:
             try:
                 data = resp.json()
@@ -178,7 +184,7 @@ def google_login_button():
         "access_type": "offline",
         "prompt": "consent"
     }
-    google_auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
+    google_auth_url = f"{BACKEND}/auth/google/redirect"
     st.markdown(
         f"""
         <div style="text-align:center; margin-top:20px;">
@@ -214,7 +220,7 @@ def profiles_area():
 
     headers = {"Authorization": f"Bearer {token}"}
     name = st.text_input("Child name")
-    grade = st.text_input("Grade")
+    grade = st.selectbox("Grade", ["Grade 4", "Grade 5", "Grade 6"])
 
     # Add Profile
     if st.button("Add Profile"):
@@ -269,12 +275,26 @@ def profiles_area():
 #   Main UI
 # ==========================
 def main():
-    st.markdown("<h1>🌈 STEM Kids Adaptive Learning Portal</h1>", unsafe_allow_html=True)
+    st.markdown("<h1> STEM Kids Adaptive Learning Portal</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align:center; color:gray;'>Empowering Learning through Technology</p>", unsafe_allow_html=True)
+
+    # If authenticated and not yet redirected, go to Profiles
+    if st.session_state.get("token") and not st.session_state.get("redirected_once"):
+        st.session_state["redirected_once"] = True
+        st.switch_page("pages/profile_select.py")
 
     google_login_button()
 
-    page = st.sidebar.radio("Navigate", ["Register", "Login", "Profiles"], index=0)
+    # Navigation default: prefer Profiles when authenticated
+    if st.session_state.get("token"):
+        default_index = 2  # "Profiles"
+    elif st.session_state.get("auto_switch_to_login"):
+        default_index = 1  # "Login"
+    else:
+        default_index = 0  # "Register"
+
+
+    page = st.sidebar.radio("Navigate", ["Register", "Login", "Profiles"], index=default_index)
     if page == "Register":
         register_parent()
     elif page == "Login":

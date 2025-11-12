@@ -36,11 +36,18 @@ app.add_middleware(
 # ==========================
 app.include_router(auth_routes.router)
 
+# ==========================
+#   Include Quiz Routes
+# ==========================
+from .routes import quiz as quiz_routes
+app.include_router(quiz_routes.router)
+
+
 
 # ==========================
 #   Google OAuth Callback
 # ==========================
-@app.get("/auth/google/callback")
+@app.get("/auth/google/callback_localdebug")
 def google_callback(code: str):
     """
     Handles the Google OAuth callback:

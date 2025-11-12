@@ -4,6 +4,35 @@ from sqlalchemy.orm import relationship
 from .database import Base
 import datetime
 
+#Quiz attempt model
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+import datetime
+
+class QuizAttempt(Base):
+    __tablename__ = "quiz_attempts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    child_id = Column(Integer, ForeignKey("child_profiles.id", ondelete="CASCADE"))  # adjust if your Profile model differs
+    subject = Column(String)
+    topic = Column(String)
+    bloom_level = Column(String)
+    score = Column(Float)
+    taken_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class QuizAttemptDetail(Base):
+    __tablename__ = "quiz_attempt_details"
+
+    id = Column(Integer, primary_key=True, index=True)
+    attempt_id = Column(Integer, ForeignKey("quiz_attempts.id", ondelete="CASCADE"), index=True)
+    question_index = Column(Integer)
+    stem = Column(String)
+    options_json = Column(String)  # JSON-encoded list of option strings
+    picked_idx = Column(Integer)
+    correct_idx = Column(Integer)
+    explanation = Column(String)
+
+
 
 # -------------------------------------------------------------
 # PARENT MODEL
