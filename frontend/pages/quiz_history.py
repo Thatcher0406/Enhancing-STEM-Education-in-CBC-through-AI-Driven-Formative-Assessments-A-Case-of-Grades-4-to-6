@@ -1,7 +1,10 @@
 import streamlit as st
 import requests
 
+from persistence import hydrate_persisted_state
+
 BACKEND = st.secrets.get("BACKEND_URL", "http://localhost:8000")
+hydrate_persisted_state()
 
 
 def _update_query(profile, subject=None, grade=None, topic=None, review_attempt_id=None):
@@ -110,4 +113,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

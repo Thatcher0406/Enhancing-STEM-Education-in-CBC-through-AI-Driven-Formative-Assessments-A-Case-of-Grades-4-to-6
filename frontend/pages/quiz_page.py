@@ -1,8 +1,57 @@
 # frontend/pages/quiz_page.py
 import streamlit as st
 import requests
+import json
+import base64
+
+from persistence import hydrate_persisted_state
 
 BACKEND = st.secrets.get("BACKEND_URL", "http://localhost:8000")
+hydrate_persisted_state()
+
+def _encode_quiz_payload(payload: dict) -> str:
+    raw = json.dumps(payload, separators=(",", ":"))
+    token = base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+    return token
+
+def _decode_quiz_payload(token: str) -> dict | None:
+    try:
+        padded = token + "=" * (-len(token) % 4)
+        raw = base64.urlsafe_b64decode(padded.encode()).decode()
+        return json.loads(raw)
+    except Exception:
+        return None
+
+def _persist_quiz_state():
+    quiz = st.session_state.get("current_quiz")
+    if not quiz:
+        return
+    try:
+        token = _encode_quiz_payload(quiz)
+    except Exception:
+        return
+    params = dict(st.query_params)
+    params["active_quiz"] = token
+    st.query_params.clear()
+    st.query_params.update(params)
+
+def _restore_quiz_from_query():
+    token = st.query_params.get("active_quiz")
+    if not token or st.session_state.get("current_quiz"):
+        return
+    if isinstance(token, list):
+        token = token[0]
+    quiz = _decode_quiz_payload(token)
+    if quiz:
+        st.session_state["current_quiz"] = quiz
+
+def _clear_persisted_quiz():
+    st.session_state.pop("current_quiz", None)
+    params = dict(st.query_params)
+    if "active_quiz" in params:
+        params.pop("active_quiz", None)
+        st.query_params.clear()
+        st.query_params.update(params)
 
 # --- Context sync helpers ---
 def _update_query(profile, subject, grade, topic=None, review_attempt_id=None):
@@ -28,6 +77,7 @@ def _update_query(profile, subject, grade, topic=None, review_attempt_id=None):
 
 
 def main():
+    _restore_quiz_from_query()
     prof = st.session_state.get("selected_profile")
     grade = st.session_state.get("selected_grade")
     # Convert to number
@@ -78,12 +128,21 @@ def main():
         col1, col2 = st.columns(2)
         with col1:
             if st.button("⬅️ Back to Subject"):
+                _clear_persisted_quiz()
                 st.session_state.pop("review_attempt_id", None)
                 st.switch_page("pages/subject_page.py")
         with col2:
             if st.button("New Quiz on this Topic"):
+                _clear_persisted_quiz()
                 st.session_state.pop("review_attempt_id", None)
         st.stop()
+
+    # Clear persisted quiz if it belongs to another topic/subject
+    existing_quiz = st.session_state.get("current_quiz")
+    if existing_quiz:
+        meta = existing_quiz.get("metadata", {}) or {}
+        if meta.get("subject") != subject or meta.get("topic") != topic:
+            _clear_persisted_quiz()
 
     bloom_choice = st.selectbox(
         "Bloom level",
@@ -103,11 +162,24 @@ def main():
             resp = requests.post(f"{BACKEND}/quiz/generate", json=payload, timeout=900)
             resp.raise_for_status()
             st.session_state["current_quiz"] = resp.json()
+            _persist_quiz_state()
         except Exception as e:
             st.error(f"Failed to generate quiz: {e}")
 
     quiz = st.session_state.get("current_quiz")
     if quiz:
+        metadata = quiz.get("metadata", {}) or {}
+        bloom = metadata.get("bloom") or metadata.get("requested_bloom")
+        requested_bloom = metadata.get("requested_bloom")
+        adaptive_context = metadata.get("adaptive_context") or {}
+        history_snapshot = metadata.get("history_snapshot") or {}
+
+        if bloom:
+            if requested_bloom and requested_bloom != bloom:
+                st.markdown(f"**Bloom level:** {bloom} _(requested {requested_bloom})_")
+            else:
+                st.markdown(f"**Bloom level:** {bloom}")
+        # Adaptive context is sent to backend/model only; avoid exposing remediation text to learners
         questions = quiz.get("questions", [])
         for i, q in enumerate(questions, start=1):
             st.markdown(f"**Q{i}. {q['stem']}**")
@@ -172,7 +244,7 @@ def main():
                         "profile_id": prof["id"],
                         "subject": subject,
                         "topic": topic,
-                        "bloom_level": (quiz.get("metadata", {}) or {}).get("bloom") or "Unknown",
+                        "bloom_level": metadata.get("bloom") or metadata.get("requested_bloom") or "Unknown",
                         "score": score,
                         "details": details,
                     },

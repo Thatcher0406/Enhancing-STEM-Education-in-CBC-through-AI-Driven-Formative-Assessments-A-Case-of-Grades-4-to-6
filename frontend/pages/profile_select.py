@@ -3,11 +3,14 @@ import streamlit as st
 import requests
 import random
 
+from persistence import hydrate_persisted_state, persist_state
+
 # --- Backend URL ---
 BACKEND = st.secrets.get("BACKEND_URL", "http://localhost:8000")
 
 # --- Page Setup ---
 st.set_page_config(page_title="Choose Profile", layout="wide")
+hydrate_persisted_state()
 
 # --- Custom Styles ---
 st.markdown("""
@@ -109,6 +112,7 @@ def main():
                         """, unsafe_allow_html=True)
                         if st.button(f"Go as {p['name']}", key=f"profile_{p['id']}"):
                             st.session_state["selected_profile"] = p
+                            persist_state(profile=p)
                             st.switch_page("pages/student_dashboard.py")
         else:
             st.info("No profiles yet. Add one above to get started!")

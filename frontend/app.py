@@ -7,6 +7,8 @@ import time
 from urllib.parse import urlencode
 from dotenv import load_dotenv
 
+from persistence import hydrate_persisted_state, persist_state
+
 # ==========================
 #   Configuration
 # ==========================
@@ -86,6 +88,7 @@ def local_css():
     """, unsafe_allow_html=True)
 
 local_css()
+hydrate_persisted_state()
 
 # ==========================
 #   Handle Google OAuth Callback
@@ -94,6 +97,7 @@ params = st.query_params
 if "oauth_token" in params:
     oauth_token = params["oauth_token"]
     st.session_state["token"] = oauth_token
+    persist_state(token=oauth_token)
     st.query_params.clear()
     st.success("🎉 Logged in with Google successfully!")
 
@@ -162,6 +166,7 @@ def login_flow():
             if resp.status_code == 200:
                 token = resp.json()["access_token"]
                 st.session_state["token"] = token
+                persist_state(token=token)
                 st.success("🎉 Logged in successfully! Redirecting...")
                 time.sleep(1.2)
                 st.switch_page("pages/profile_select.py")
@@ -256,6 +261,8 @@ def profiles_area():
                     with cols[i % 3]:
                         if st.button(f"Use {p['name']}", key=f"use_{p['id']}"):
                             st.session_state["active_profile"] = p
+                            st.session_state["selected_profile"] = p
+                            persist_state(profile=p)
                             st.markdown(
                                 f"<div class='success-box'>Active profile: <b>{p['name']}</b></div>",
                                 unsafe_allow_html=True
