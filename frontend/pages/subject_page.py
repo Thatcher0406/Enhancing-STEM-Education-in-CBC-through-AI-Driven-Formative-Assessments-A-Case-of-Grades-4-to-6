@@ -3,9 +3,12 @@ import streamlit as st
 import random
 import requests
 
+from persistence import hydrate_persisted_state
+
 BACKEND = st.secrets.get("BACKEND_URL", "http://localhost:8000")
 
 st.set_page_config(page_title="Subject Progress", layout="wide")
+hydrate_persisted_state()
 
 # ---- Context sync helpers ----
 def _sync_from_query():

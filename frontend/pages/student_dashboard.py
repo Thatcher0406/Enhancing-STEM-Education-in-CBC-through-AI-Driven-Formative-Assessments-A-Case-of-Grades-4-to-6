@@ -1,7 +1,10 @@
 import streamlit as st
 from datetime import datetime
 
+from persistence import hydrate_persisted_state
+
 st.set_page_config(page_title="Student Dashboard", layout="wide")
+hydrate_persisted_state()
 
 
 def _update_query(profile, subject=None, grade=None):
@@ -94,4 +97,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
