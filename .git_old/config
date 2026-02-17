@@ -1,0 +1,18 @@
+[core]
+	repositoryformatversion = 0
+	filemode = false
+	bare = false
+	logallrefupdates = true
+	symlinks = false
+	ignorecase = true
+[branch "main"]
+	vscode-merge-base = origin/main
+	github-pr-owner-number = "Thatcher0406#Enhancing-STEM-Education-in-CBC-through-AI-Driven-Formative-Assessments-A-Case-of-Grades-4-to-6#1"
+[branch "2-design-login-signup-forms-for-all-users"]
+	github-pr-base-branch = "Thatcher0406#Enhancing-STEM-Education-in-CBC-through-AI-Driven-Formative-Assessments-A-Case-of-Grades-4-to-6#main"
+	vscode-merge-base = origin/2-design-login-signup-forms-for-all-users
+[branch "3-design-frontend-for-the-pages-created"]
+	vscode-merge-base = origin/3-design-frontend-for-the-pages-created
+[remote "origin"]
+	url = https://github.com/Thatcher0406/Enhancing-STEM-Education-in-CBC-through-AI-Driven-Formative-Assessments-A-Case-of-Grades-4-to-6.git
+	fetch = +refs/heads/*:refs/remotes/origin/*
